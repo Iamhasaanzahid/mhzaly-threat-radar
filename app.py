@@ -5,7 +5,7 @@ import dns.resolver
 
 st.set_page_config(page_title="Threat Intel & Breach Radar", layout="wide", page_icon="🌐")
 
-# Dark Theme UI
+# Dark Mode UI
 st.markdown("""
     <style>
     .stApp {
@@ -30,107 +30,109 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-st.title("🌐 Global Threat & Breach Intelligence Engine")
-st.caption("Investigate world-wide domains, exposed services, email breach history, and threat signals.")
+st.title("🌐 SoloRadar — Global Threat & Breach Intelligence Engine")
+st.caption("Investigate world-wide domains, exposed services, live email breach history, and threat signals.")
 
-# Search bar controls
+# Search Controls
 col_type, col_query = st.columns([1, 3])
 with col_type:
-    search_type = st.radio("Search Mode", ["Domain Recon", "Email Exposure Check"], horizontal=True)
+    search_type = st.radio("Search Mode", ["Email Breach Check", "Domain Recon"], horizontal=True)
 
 with col_query:
-    placeholder_text = "e.g. google.com, upwork.com, oxford.ac.uk" if search_type == "Domain Recon" else "e.g. test@example.com"
-    query = st.text_input("Enter Target", placeholder=placeholder_text)
+    placeholder_text = "Enter any email (e.g. test@gmail.com, ceo@company.com)" if search_type == "Email Breach Check" else "Enter domain (e.g. google.com, umt.edu.pk, bbc.com)"
+    query = st.text_input("Enter Search Target", placeholder=placeholder_text)
 
-# --- Threat Recon Functions ---
+st.markdown("---")
 
-def analyze_domain_threats(domain_name):
-    """Fetches real-time DNS records, subdomains signal, and WHOIS security indicators."""
-    domain_clean = domain_name.strip().lower().replace("https://", "").replace("http://", "").split("/")[0]
+# 1. Worldwide Real-Time Email Breach Checker (XposedOrNot Free Live API)
+def check_live_email_breaches(email_str):
+    email_clean = email_str.strip().lower()
+    url = f"https://api.xposedornot.com/v1/check-email/{email_clean}"
+    
+    try:
+        response = requests.get(url, timeout=8)
+        if response.status_code == 200:
+            data = response.json()
+            breaches_list = data.get("breaches", [])
+            # Format results
+            results = []
+            for b in breaches_list:
+                results.append({
+                    "Target Identity": email_clean,
+                    "Breach Source / Incident": b,
+                    "Exposed Data Type": "Credentials / Personal Identifiers",
+                    "Status": "⚠️ Breached / Exposed",
+                    "Severity": "High"
+                })
+            return True, results
+        elif response.status_code == 404:
+            return False, []
+        else:
+            return None, f"API Response Code: {response.status_code}"
+    except Exception as e:
+        return None, str(e)
+
+# 2. Worldwide Domain Recon & Surface Analyzer
+def check_domain_infrastructure(domain_str):
+    domain_clean = domain_str.strip().lower().replace("https://", "").replace("http://", "").split("/")[0]
     records = []
     
-    # 1. DNS Resolution Check
-    record_types = ["A", "MX", "TXT", "NS"]
-    for r_type in record_types:
+    # DNS Resolution
+    for r_type in ["A", "MX", "TXT", "NS"]:
         try:
             answers = dns.resolver.resolve(domain_clean, r_type)
             for rdata in answers:
                 records.append({
+                    "Domain": domain_clean,
                     "Record Type": r_type,
-                    "Target / Host": domain_clean,
-                    "Details / Value": str(rdata),
-                    "Risk Level": "Informational"
+                    "Value / Target Host": str(rdata),
+                    "Exposure Scope": "Public DNS"
                 })
         except Exception:
             pass
 
-    # 2. Check threat indicator via Public AlienVault/OTX or RDAP
-    try:
-        rdap_url = f"https://rdap.org/domain/{domain_clean}"
-        res = requests.get(rdap_url, timeout=4)
-        if res.status_code == 200:
-            data = res.json()
-            handle = data.get("handle", "N/A")
-            records.append({
-                "Record Type": "WHOIS/RDAP",
-                "Target / Host": domain_clean,
-                "Details / Value": f"Registry ID: {handle}",
-                "Risk Level": "Low Risk"
-            })
-    except Exception:
-        pass
-
     return domain_clean, records
 
-def check_email_exposure(email_address):
-    """Queries open-source exposure data for emails."""
-    email_clean = email_address.strip().lower()
-    
-    # Example integration with public breach check APIs / heuristic checks
-    results = []
-    domain_part = email_clean.split("@")[-1] if "@" in email_clean else ""
-    
-    results.append({
-        "Identity": email_clean,
-        "Domain Associated": domain_part,
-        "Exposure Risk": "Heuristic Scan Completed",
-        "Recommended Action": "Rotate credentials and enforce Multi-Factor Authentication (MFA)"
-    })
-    
-    return results
-
-# --- Main Dashboard Logic ---
-
+# Main Rendering Logic
 if query:
-    if search_type == "Domain Recon":
-        with st.spinner("Scanning global routing and security records..."):
-            domain, results = analyze_domain_threats(query)
+    if search_type == "Email Breach Check":
+        with st.spinner("Querying worldwide breach databases..."):
+            status, breaches = check_live_email_breaches(query)
             
-            c1, c2, c3 = st.columns(3)
-            with c1:
-                st.markdown(f'<div class="metric-card"><div class="metric-lbl">ACTIVE TARGET</div><div class="metric-val">{domain}</div></div>', unsafe_allow_html=True)
-            with c2:
-                st.markdown(f'<div class="metric-card"><div class="metric-lbl">EXPOSED RECORDS FOUND</div><div class="metric-val">{len(results)}</div></div>', unsafe_allow_html=True)
-            with c3:
-                status_txt = "Healthy" if len(results) > 0 else "Unresolvable"
-                st.markdown(f'<div class="metric-card"><div class="metric-lbl">STATUS</div><div class="metric-val">{status_txt}</div></div>', unsafe_allow_html=True)
-            
-            st.markdown("---")
-            st.subheader("🔍 Discovered Surface & Infrastructure Records")
-            if results:
-                df = pd.DataFrame(results)
+            if status is True:
+                c1, c2, c3 = st.columns(3)
+                with c1:
+                    st.markdown(f'<div class="metric-card"><div class="metric-lbl">TARGET EMAIL</div><div class="metric-val" style="font-size:1.2rem;">{query}</div></div>', unsafe_allow_html=True)
+                with c2:
+                    st.markdown(f'<div class="metric-card"><div class="metric-lbl">KNOWN BREACHES FOUND</div><div class="metric-val" style="color:#ef4444;">{len(breaches)}</div></div>', unsafe_allow_html=True)
+                with c3:
+                    st.markdown(f'<div class="metric-card"><div class="metric-lbl">RISK LEVEL</div><div class="metric-val" style="color:#ef4444;">CRITICAL</div></div>', unsafe_allow_html=True)
+                
+                st.markdown("<br>", unsafe_allow_html=True)
+                st.subheader("🚨 Incident Details & Compromised Sources")
+                df = pd.DataFrame(breaches)
                 st.dataframe(df, use_container_width=True, hide_index=True)
+                
+            elif status is False:
+                st.success(f"✅ Good news! No publicly disclosed breach records found for **{query}**.")
             else:
-                st.warning("No public records resolved for this domain. Verify the spelling or network visibility.")
+                st.error(f"Error querying breach intelligence service: {breaches}")
 
-    elif search_type == "Email Exposure Check":
-        with st.spinner("Checking identity exposure records..."):
-            email_results = check_email_exposure(query)
+    elif search_type == "Domain Recon":
+        with st.spinner("Scanning worldwide infrastructure & DNS..."):
+            domain, records = check_domain_infrastructure(query)
             
-            st.subheader("🛡️ Compromise Risk Assessment")
-            df_email = pd.DataFrame(email_results)
-            st.dataframe(df_email, use_container_width=True, hide_index=True)
-            st.info("💡 Tip: For production breach data feeds, integrate APIs like HaveIBeenPwned or LeakCheck API key into Streamlit Secrets.")
-
+            c1, c2 = st.columns(2)
+            with c1:
+                st.markdown(f'<div class="metric-card"><div class="metric-lbl">TARGET DOMAIN</div><div class="metric-val" style="font-size:1.4rem;">{domain}</div></div>', unsafe_allow_html=True)
+            with c2:
+                st.markdown(f'<div class="metric-card"><div class="metric-lbl">RESOLVED ASSETS</div><div class="metric-val">{len(records)}</div></div>', unsafe_allow_html=True)
+            
+            st.markdown("<br>", unsafe_allow_html=True)
+            st.subheader("🌐 Discovered Network Assets & Records")
+            if records:
+                st.dataframe(pd.DataFrame(records), use_container_width=True, hide_index=True)
+            else:
+                st.warning("No records found. Please check domain name.")
 else:
-    st.info("👆 Enter any worldwide domain (e.g. `bbc.com`, `harvard.edu`, `shopify.com`) or an email to run the intelligence check.")
+    st.info("👆 Enter any worldwide email (e.g., `elon@x.com`, `admin@adobe.com`) or domain name to run live checks.")
