@@ -1,5 +1,4 @@
 import streamlit as st
-import streamlit as st
 import pandas as pd
 import numpy as np
 import hashlib
@@ -8,7 +7,7 @@ import dns.resolver
 # 1. Page Configuration
 st.set_page_config(page_title="MHZALY Threat Radar", layout="wide", page_icon="🛡️")
 
-# 2. Dark Cyberpunk Styling (Video Matched)
+# 2. Dark Cyberpunk Styling
 st.markdown("""
     <style>
     .stApp {
@@ -49,7 +48,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# 3. Session State (Daily Points & Unlocked Items)
+# 3. Session State
 if "points" not in st.session_state:
     st.session_state.points = 150
 
@@ -99,16 +98,12 @@ def generate_worldwide_intelligence(target_input, mode):
     
     if "@" in target:
         domain = target.split("@")[-1]
-        user_prefix = target.split("@")[0]
     else:
         domain = target
-        user_prefix = "user"
 
-    # Base seed from string to keep consistency for same domain/email
     seed_val = int(hashlib.md5(target.encode()).hexdigest()[:8], 16)
     np.random.seed(seed_val)
 
-    # Dynamic synthetic record generation for ANY domain worldwide
     sample_endpoints = [
         f"http://onlineadmissions.{domain}/login",
         f"https://portal.{domain}/account/resetpassword",
@@ -146,8 +141,7 @@ def generate_worldwide_intelligence(target_input, mode):
     categories = ["Employees", "Customers", "third_parties"]
     records = []
     
-    num_records = 15
-    for idx in range(num_records):
+    for idx in range(15):
         cat = categories[idx % len(categories)]
         u_name = sample_usernames[idx % len(sample_usernames)]
         pwd = sample_passwords[idx % len(sample_passwords)]
@@ -177,7 +171,6 @@ def generate_worldwide_intelligence(target_input, mode):
 if query:
     target_domain, all_records, emp_total, cust_total, third_total = generate_worldwide_intelligence(query, search_mode)
     
-    # Filter records based on UI inputs
     filtered_results = [
         r for r in all_records
         if (not url_filter or url_filter.lower() in r["url"].lower())
@@ -243,8 +236,8 @@ if query:
             row = st.columns([3, 2.5, 4, 1.5, 1.5, 1.5])
             row[0].code(item["user"])
 
-            # Unlocked State logic (first 4 unlocked by default)
-            is_unlocked = (idx < 4) or (item["key"] in st.session_state.unlocked_keys)
+            # Unlocked State logic
+            is_unlocked = (idx < 4 and category_name == "All") or (item["key"] in st.session_state.unlocked_keys)
             
             if is_unlocked:
                 row[1].markdown(f"🔓 `{item['pwd']}`")
@@ -258,7 +251,9 @@ if query:
             if is_unlocked:
                 row[5].markdown("<span style='color:#4ade80;'>Unlocked</span>", unsafe_allow_html=True)
             else:
-                if row[5].button("Unlock", key=f"btn_{item['key']}"):
+                # Unique button key per category tab and index
+                btn_unique_key = f"btn_{category_name}_{item['key']}_{idx}"
+                if row[5].button("Unlock", key=btn_unique_key):
                     if st.session_state.points > 0:
                         st.session_state.points -= 1
                         st.session_state.unlocked_keys.add(item["key"])
