@@ -3,7 +3,7 @@ import pandas as pd
 import requests
 import dns.resolver
 
-st.set_page_config(page_title="Threat Intel & Breach Radar", layout="wide", page_icon="🌐")
+st.set_page_config(page_title="MHZALY Threat Radar", layout="wide", page_icon="🛡️")
 
 # Dark Mode UI
 st.markdown("""
@@ -30,7 +30,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-st.title("🌐 SoloRadar — Global Threat & Breach Intelligence Engine")
+st.title("🛡️ MHZALY Threat Radar — Global Threat & Breach Intelligence Engine")
 st.caption("Investigate world-wide domains, exposed services, live email breach history, and threat signals.")
 
 # Search Controls
