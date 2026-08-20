@@ -1,13 +1,12 @@
 import streamlit as st
 import pandas as pd
-import numpy as np
-import hashlib
-import re
+import requests
+import dns.resolver
 
 # 1. Page Configuration
 st.set_page_config(page_title="MHZALY Threat Radar", layout="wide", page_icon="🛡️")
 
-# 2. Dark Cyberpunk UI Styling
+# 2. Dark Cyberpunk Styling
 st.markdown("""
     <style>
     .stApp {
@@ -48,214 +47,154 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# 3. State Management
+# 3. Session State for Custom Ingestion & Unlocks
+if "custom_db" not in st.session_state:
+    st.session_state.custom_db = []
+
 if "points" not in st.session_state:
     st.session_state.points = 150
 
 if "unlocked_keys" not in st.session_state:
     st.session_state.unlocked_keys = set()
 
-# 4. Header
+# 4. Sidebar: Custom Data Uploader
+with st.sidebar:
+    st.subheader("📂 Ingest Local Breach Dumps")
+    st.caption("Upload raw CSV or Text breach logs (Columns: user, password, url, category)")
+    uploaded_file = st.file_uploader("Upload Dump File", type=["csv", "txt"])
+    
+    if uploaded_file is not None:
+        try:
+            df_upload = pd.read_csv(uploaded_file)
+            st.session_state.custom_db = df_upload.to_dict(orient="records")
+            st.success(f"Loaded {len(st.session_state.custom_db)} real records into local index.")
+        except Exception as e:
+            st.error(f"Error parsing file: {e}")
+
+# 5. Header Section
 col_h1, col_h2 = st.columns([3, 1])
 with col_h1:
     st.title("🛡️ MHZALY Threat Radar — THREAT INTEL TOOL")
 with col_h2:
     st.markdown(f"<div style='text-align:right; margin-top:20px;'><span class='badge-points'>⚡ Daily Burn: <b>{st.session_state.points} points</b></span></div>", unsafe_allow_html=True)
 
-# 5. Search Filters
+# 6. Search Filters
 search_mode = st.radio(
     "Search Mode Selector",
-    ["Domain", "Email / Username", "Dark Web", "Password Range"],
+    ["Email Intelligence", "Domain Surface Recon", "Local Breach Logs Search"],
     horizontal=True
 )
 
 c_in1, c_in2 = st.columns([3, 2])
 with c_in1:
-    query = st.text_input("Target Query", value="", placeholder="Enter target (e.g. google.com, oxford.ac.uk, admin@domain.com)...")
+    query = st.text_input("Target Query", value="", placeholder="Enter target (e.g. test@gmail.com, google.com, admin@target.com)...")
 
 with c_in2:
-    url_filter = st.text_input("URL / Path Filter", placeholder="e.g. login, portal, cpanel")
-
-c_opt1, c_opt2 = st.columns([1, 4])
-with c_opt1:
-    raw_json_toggle = st.checkbox("Raw aggregate JSON")
-with c_opt2:
-    if search_mode == "Password Range":
-        pwd_range = st.slider("Password Length Filter", min_value=4, max_value=24, value=(4, 24))
-    else:
-        pwd_range = (0, 100)
+    url_filter = st.text_input("URL / Keyword Filter", placeholder="Filter by domain or service keyword")
 
 st.markdown("---")
 
-# 6. Target Validity Check
-def is_valid_target(target):
-    target = target.strip()
-    if not target or len(target) < 4:
-        return False
-    # Check if user just entered dots or symbols
-    if re.fullmatch(r"[\.\-_/]+", target):
-        return False
-    # Must have a valid dot for domain or @ for email
-    if "." not in target and "@" not in target:
-        return False
-    return True
-
-# 7. Intelligence Generator
-def generate_threat_data(target_input):
-    target = target_input.strip().lower().replace("https://", "").replace("http://", "").split("/")[0]
-    
-    if not is_valid_target(target):
-        return target, [], 0, 0
-
-    if "@" in target:
-        domain = target.split("@")[-1]
-    else:
-        domain = target
-
-    # Consistent seed
-    seed = int(hashlib.md5(domain.encode()).hexdigest()[:8], 16)
-    np.random.seed(seed)
-
-    records = [
-        # Employees
-        {"user": f"admin@{domain}", "pwd": "AdminRoot#2026", "url": f"https://online.{domain}/cpanel", "category": "Employees", "len": 14},
-        {"user": f"director_it@{domain}", "pwd": "CloudInfra#2026", "url": f"https://mail.{domain}/owa", "category": "Employees", "len": 15},
-        {"user": f"support@{domain}", "pwd": "Helpdesk#123", "url": f"https://portal.{domain}/account/resetpassword", "category": "Employees", "len": 12},
-        {"user": f"lead_sec@{domain}", "pwd": "CyberSecure99", "url": f"https://vpn.{domain}/auth", "category": "Employees", "len": 13},
-        {"user": f"hr_portal@{domain}", "pwd": "HrAccess!987", "url": f"https://hr.{domain}/login", "category": "Employees", "len": 12},
-        
-        # Customers
-        {"user": f"customer_user1@{domain}", "pwd": "ProShoaibillah2", "url": f"http://onlineadmissions.{domain}/login", "category": "Customers", "len": 15},
-        {"user": f"client_portal@{domain}", "pwd": "Farazq07", "url": f"https://online.{domain}/account/resetpassword", "category": "Customers", "len": 8},
-        {"user": f"student_access@{domain}", "pwd": "Aimenh00", "url": f"https://online.{domain}/account/resetpassword", "category": "Customers", "len": 8},
-        {"user": f"billing_user@{domain}", "pwd": "827460", "url": f"http://onlineadmissions.{domain}/login", "category": "Customers", "len": 6},
-        {"user": f"lms_member@{domain}", "pwd": "K2Y5jRFN", "url": f"https://lms.{domain}/moodle/login/index.php", "category": "Customers", "len": 8},
-        
-        # Third Parties
-        {"user": f"freelancer@{domain}", "pwd": "MalikA_A986", "url": "http://upwork.com", "category": "third_parties", "len": 10},
-        {"user": f"researcher@{domain}", "pwd": "Research!99", "url": "http://researchgate.net", "category": "third_parties", "len": 11},
-        {"user": f"marketing@{domain}", "pwd": "SecP@ss2026!", "url": "http://socialbakers.com", "category": "third_parties", "len": 12},
-        {"user": f"elearning@{domain}", "pwd": "OnlinePass#11", "url": f"https://coursera.org/programs/{domain.split('.')[0]}", "category": "third_parties", "len": 13},
-    ]
-
-    for idx, r in enumerate(records):
-        r["key"] = f"{domain}_{idx+1}"
-        r["added"] = "2026-08-16"
-
-    emp_metric = sum(1 for r in records if r["category"] == "Employees") * int(np.random.randint(400, 800))
-    cust_metric = sum(1 for r in records if r["category"] == "Customers") * int(np.random.randint(5000, 15000))
-
-    return domain, records, emp_metric, cust_metric
-
-# 8. Render Logic
-if query:
-    target_domain, all_records, emp_total, cust_total = generate_threat_data(query)
-
-    # Filter records
-    filtered = [
-        r for r in all_records
-        if (not url_filter or url_filter.strip().lower() in r["url"].lower() or url_filter.strip().lower() in r["user"].lower())
-        and (pwd_range[0] <= r["len"] <= pwd_range[1])
-    ]
-
-    # اگر کوئی ریکارڈ نہیں ملتا یا غلط ڈومین ہے تو میٹرکس 0 ہو جائیں گے
-    if len(filtered) == 0:
-        emp_display = 0
-        cust_display = 0
-        timeline_values = [0] * 12
-    else:
-        emp_display = emp_total
-        cust_display = cust_total
-        timeline_values = [15, 22, 30, 28, 45, 55, 60, 48, 72, 85, 90, 110]
-
-    # Metrics Row
-    col_m1, col_m2, col_m3 = st.columns([1.2, 1.2, 1])
-    with col_m1:
-        st.markdown(f"""
-        <div class="metric-card">
-            <div class="metric-title">👥 EMPLOYEES</div>
-            <div class="metric-number">{emp_display:,}</div>
-            <div class="metric-subtext">{"97% strong · 3% weak" if emp_display > 0 else "0% compromise"}</div>
-        </div>
-        """, unsafe_allow_html=True)
-
-    with col_m2:
-        st.markdown(f"""
-        <div class="metric-card">
-            <div class="metric-title">👤 CUSTOMERS</div>
-            <div class="metric-number">{cust_display:,}</div>
-            <div class="metric-subtext">{"78% strong · 22% weak" if cust_display > 0 else "0% compromise"}</div>
-        </div>
-        """, unsafe_allow_html=True)
-
-    with col_m3:
-        st.markdown("""<div class="metric-card"><div class="metric-title">📈 BREACH TIMELINE</div>""", unsafe_allow_html=True)
-        timeline_data = pd.DataFrame({"Incidents": timeline_values})
-        st.line_chart(timeline_data, height=75)
-        st.markdown("</div>", unsafe_allow_html=True)
-
-    st.markdown("<br>", unsafe_allow_html=True)
-
-    if raw_json_toggle:
-        st.json(filtered)
-
-    # Tabs Display
-    tab_all, tab_emp, tab_cust, tab_third = st.tabs(["All", "Employees", "Customers", "third_parties"])
-
-    def render_tab_table(cat_filter):
-        if cat_filter == "All":
-            dataset = filtered
+# 7. Real Live API Functions
+def query_real_email_breaches(email_str):
+    email_clean = email_str.strip().lower()
+    url = f"https://api.xposedornot.com/v1/check-email/{email_clean}"
+    try:
+        res = requests.get(url, timeout=7)
+        if res.status_code == 200:
+            data = res.json()
+            breaches = data.get("breaches", [])
+            return True, breaches
+        elif res.status_code == 404:
+            return False, []
         else:
-            dataset = [r for r in filtered if r["category"].lower() == cat_filter.lower()]
+            return None, []
+    except Exception:
+        return None, []
 
-        if not dataset:
-            st.info("No matching records found for this target/category.")
-            return
+def resolve_domain_assets(domain_str):
+    domain_clean = domain_str.strip().lower().replace("https://", "").replace("http://", "").split("/")[0]
+    records = []
+    for r_type in ["A", "MX", "TXT", "NS"]:
+        try:
+            answers = dns.resolver.resolve(domain_clean, r_type)
+            for r in answers:
+                records.append({
+                    "Asset Domain": domain_clean,
+                    "Record Type": r_type,
+                    "Resolved Target / IP": str(r),
+                    "Scope": "Public Surface"
+                })
+        except Exception:
+            pass
+    return domain_clean, records
 
-        cols = st.columns([3.5, 2.5, 4, 2, 1.5, 1.5])
-        cols[0].write("**Username / Email**")
-        cols[1].write("**Password**")
-        cols[2].write("**Target URL**")
-        cols[3].write("**Category**")
-        cols[4].write("**Added**")
-        cols[5].write("**Action**")
-        st.divider()
+# 8. Execution Logic
+if query:
+    if search_mode == "Email Intelligence":
+        with st.spinner("Checking worldwide live breach databases..."):
+            found, incidents = query_real_email_breaches(query)
+            
+            total_incidents = len(incidents) if found else 0
+            
+            c1, c2, c3 = st.columns(3)
+            with c1:
+                st.markdown(f'<div class="metric-card"><div class="metric-title">TARGET</div><div class="metric-number" style="font-size:1.3rem;">{query}</div></div>', unsafe_allow_html=True)
+            with c2:
+                st.markdown(f'<div class="metric-card"><div class="metric-title">REAL BREACHES FOUND</div><div class="metric-number" style="color:{"#ef4444" if total_incidents > 0 else "#4ade80"};">{total_incidents}</div></div>', unsafe_allow_html=True)
+            with c3:
+                risk_lvl = "CRITICAL" if total_incidents > 0 else "CLEAN"
+                st.markdown(f'<div class="metric-card"><div class="metric-title">RISK PROFILE</div><div class="metric-number" style="color:{"#ef4444" if total_incidents > 0 else "#4ade80"};">{risk_lvl}</div></div>', unsafe_allow_html=True)
 
-        for idx, item in enumerate(dataset):
-            row = st.columns([3.5, 2.5, 4, 2, 1.5, 1.5])
-            row[0].code(item["user"])
-
-            is_unlocked = (idx < 3 and cat_filter == "All") or (item["key"] in st.session_state.unlocked_keys)
-
-            if is_unlocked:
-                row[1].markdown(f"🔓 `{item['pwd']}`")
+            st.markdown("<br>", unsafe_allow_html=True)
+            
+            if found and incidents:
+                st.subheader("🚨 Disclosed Real Breach Incidents")
+                breach_rows = []
+                for b in incidents:
+                    breach_rows.append({
+                        "Identity Exposed": query,
+                        "Breach Database / Dump Source": b,
+                        "Exposure Status": "Exposed",
+                        "Source Type": "Public Data Breach Feed"
+                    })
+                st.dataframe(pd.DataFrame(breach_rows), use_container_width=True, hide_index=True)
+            elif not found:
+                st.success(f"✅ No exposed breach records found for **{query}** across open intelligence sources.")
             else:
-                row[1].markdown("🔒 `••••••••`")
+                st.warning("Intelligence lookup timed out or rate limited. Please retry.")
 
-            row[2].caption(item["url"])
-            row[3].write(item["category"])
-            row[4].write(item["added"])
+    elif search_mode == "Domain Surface Recon":
+        with st.spinner("Resolving domain infrastructure..."):
+            d_clean, assets = resolve_domain_assets(query)
+            
+            c1, c2 = st.columns(2)
+            with c1:
+                st.markdown(f'<div class="metric-card"><div class="metric-title">ACTIVE DOMAIN</div><div class="metric-number" style="font-size:1.4rem;">{d_clean}</div></div>', unsafe_allow_html=True)
+            with c2:
+                st.markdown(f'<div class="metric-card"><div class="metric-title">LIVE ASSETS RESOLVED</div><div class="metric-number">{len(assets)}</div></div>', unsafe_allow_html=True)
 
-            if is_unlocked:
-                row[5].markdown("<span style='color:#4ade80;'>Unlocked</span>", unsafe_allow_html=True)
+            st.markdown("<br>", unsafe_allow_html=True)
+            st.subheader("🌐 Discovered Live Infrastructure")
+            if assets:
+                st.dataframe(pd.DataFrame(assets), use_container_width=True, hide_index=True)
             else:
-                btn_id = f"btn_{cat_filter}_{item['key']}_{idx}"
-                if row[5].button("Unlock", key=btn_id):
-                    if st.session_state.points > 0:
-                        st.session_state.points -= 1
-                        st.session_state.unlocked_keys.add(item["key"])
-                        st.rerun()
-                    else:
-                        st.error("Out of points!")
+                st.warning("No records resolved for this domain name.")
 
-    with tab_all:
-        render_tab_table("All")
-    with tab_emp:
-        render_tab_table("Employees")
-    with tab_cust:
-        render_tab_table("Customers")
-    with tab_third:
-        render_tab_table("third_parties")
-
+    elif search_mode == "Local Breach Logs Search":
+        if not st.session_state.custom_db:
+            st.info("💡 Use the left sidebar to upload your real `.csv` or `.txt` breach log file.")
+        else:
+            q_clean = query.strip().lower()
+            matched = [
+                r for r in st.session_state.custom_db
+                if any(q_clean in str(v).lower() for v in r.values())
+                and (not url_filter or url_filter.lower() in str(r.get("url", "")).lower())
+            ]
+            
+            st.subheader(f"📋 Matched Records from Uploaded Dataset ({len(matched)})")
+            if matched:
+                st.dataframe(pd.DataFrame(matched), use_container_width=True, hide_index=True)
+            else:
+                st.warning("No matching logs found in uploaded database.")
 else:
-    st.info("👆 Enter any valid worldwide domain (e.g. `google.com`, `shopify.com`, `apple.com`) or email to inspect.")
+    st.info("👆 Enter any worldwide email (e.g. `test@gmail.com`, `admin@adobe.com`) or domain name above to inspect.")
