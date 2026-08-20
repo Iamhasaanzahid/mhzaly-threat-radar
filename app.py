@@ -47,14 +47,14 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# 3. State Management
+# 3. State Management (Points & Unlocked Keys)
 if "points" not in st.session_state:
     st.session_state.points = 150
 
 if "unlocked_keys" not in st.session_state:
     st.session_state.unlocked_keys = set()
 
-# 4. Header
+# 4. Header Section
 col_h1, col_h2 = st.columns([3, 1])
 with col_h1:
     st.title("🛡️ MHZALY Threat Radar — THREAT INTEL TOOL")
@@ -70,10 +70,11 @@ search_mode = st.radio(
 
 c_in1, c_in2 = st.columns([3, 2])
 with c_in1:
-    query = st.text_input("Target Query", value="umt.edu.pk", placeholder="Enter domain or email...")
+    # Default value is now empty ("") so no hardcoded domain appears on refresh
+    query = st.text_input("Target Query", value="", placeholder="Enter any domain or email worldwide (e.g. google.com, oxford.ac.uk, user@test.com)...")
 
 with c_in2:
-    url_filter = st.text_input("URL / Path Filter", placeholder="e.g. login, resetpassword, moodle")
+    url_filter = st.text_input("URL / Path Filter", placeholder="e.g. login, resetpassword, moodle, portal")
 
 c_opt1, c_opt2 = st.columns([1, 4])
 with c_opt1:
@@ -110,11 +111,11 @@ def generate_threat_data(target_input):
         {"user": f"hr_portal@{domain}", "pwd": "HrAccess!987", "url": f"https://hr.{domain}/login", "category": "Employees", "len": 12},
         
         # Customers
-        {"user": f"f2018134093@{domain}", "pwd": "ProShoaibillah2", "url": f"http://onlineadmissions.{domain}/login", "category": "Customers", "len": 15},
-        {"user": f"f2019105057@{domain}", "pwd": "Farazq07", "url": f"https://online.{domain}/account/resetpassword", "category": "Customers", "len": 8},
-        {"user": f"f2019088054@{domain}", "pwd": "Aimenh00", "url": f"https://online.{domain}/account/resetpassword", "category": "Customers", "len": 8},
-        {"user": f"afreen.abbas@{domain}", "pwd": "827460", "url": f"http://onlineadmissions.{domain}/login", "category": "Customers", "len": 6},
-        {"user": f"f2018266059@{domain}", "pwd": "K2Y5jRFN", "url": f"https://lms.{domain}/moodle/login/index.php", "category": "Customers", "len": 8},
+        {"user": f"customer_user1@{domain}", "pwd": "ProShoaibillah2", "url": f"http://onlineadmissions.{domain}/login", "category": "Customers", "len": 15},
+        {"user": f"client_portal@{domain}", "pwd": "Farazq07", "url": f"https://online.{domain}/account/resetpassword", "category": "Customers", "len": 8},
+        {"user": f"student_access@{domain}", "pwd": "Aimenh00", "url": f"https://online.{domain}/account/resetpassword", "category": "Customers", "len": 8},
+        {"user": f"billing_user@{domain}", "pwd": "827460", "url": f"http://onlineadmissions.{domain}/login", "category": "Customers", "len": 6},
+        {"user": f"lms_member@{domain}", "pwd": "K2Y5jRFN", "url": f"https://lms.{domain}/moodle/login/index.php", "category": "Customers", "len": 8},
         
         # Third Parties
         {"user": f"freelancer@{domain}", "pwd": "MalikA_A986", "url": "http://upwork.com", "category": "third_parties", "len": 10},
@@ -132,18 +133,17 @@ def generate_threat_data(target_input):
 
     return domain, records, emp_metric, cust_metric
 
-# 7. Render Screen
+# 7. Render Screen Logic
 if query:
     target_domain, all_records, emp_total, cust_total = generate_threat_data(query)
 
-    # Filter logic
     filtered = [
         r for r in all_records
         if (not url_filter or url_filter.strip().lower() in r["url"].lower() or url_filter.strip().lower() in r["user"].lower())
         and (pwd_range[0] <= r["len"] <= pwd_range[1])
     ]
 
-    # Metrics
+    # Metrics Row
     col_m1, col_m2, col_m3 = st.columns([1.2, 1.2, 1])
     with col_m1:
         st.markdown(f"""
@@ -174,7 +174,7 @@ if query:
     if raw_json_toggle:
         st.json(filtered)
 
-    # Tabs
+    # Tabs Display
     tab_all, tab_emp, tab_cust, tab_third = st.tabs(["All", "Employees", "Customers", "third_parties"])
 
     def render_tab_table(cat_filter):
@@ -187,7 +187,6 @@ if query:
             st.info("No matching records found for this category.")
             return
 
-        # Header Columns
         cols = st.columns([3.5, 2.5, 4, 2, 1.5, 1.5])
         cols[0].write("**Username / Email**")
         cols[1].write("**Password**")
@@ -201,7 +200,6 @@ if query:
             row = st.columns([3.5, 2.5, 4, 2, 1.5, 1.5])
             row[0].code(item["user"])
 
-            # Default unlocked for first 3 items in 'All' tab, or unlocked via points
             is_unlocked = (idx < 3 and cat_filter == "All") or (item["key"] in st.session_state.unlocked_keys)
 
             if is_unlocked:
@@ -233,3 +231,6 @@ if query:
         render_tab_table("Customers")
     with tab_third:
         render_tab_table("third_parties")
+
+else:
+    st.info("👆 Enter any worldwide domain (e.g. `google.com`, `shopify.com`, `apple.com`) or email to run the intelligence check.")
