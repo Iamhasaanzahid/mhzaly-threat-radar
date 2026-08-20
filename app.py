@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import hashlib
+import re
 
 # 1. Page Configuration
 st.set_page_config(page_title="MHZALY Threat Radar", layout="wide", page_icon="🛡️")
@@ -47,14 +48,14 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# 3. State Management (Points & Unlocked Keys)
+# 3. State Management
 if "points" not in st.session_state:
     st.session_state.points = 150
 
 if "unlocked_keys" not in st.session_state:
     st.session_state.unlocked_keys = set()
 
-# 4. Header Section
+# 4. Header
 col_h1, col_h2 = st.columns([3, 1])
 with col_h1:
     st.title("🛡️ MHZALY Threat Radar — THREAT INTEL TOOL")
@@ -70,11 +71,10 @@ search_mode = st.radio(
 
 c_in1, c_in2 = st.columns([3, 2])
 with c_in1:
-    # Default value is now empty ("") so no hardcoded domain appears on refresh
-    query = st.text_input("Target Query", value="", placeholder="Enter any domain or email worldwide (e.g. google.com, oxford.ac.uk, user@test.com)...")
+    query = st.text_input("Target Query", value="", placeholder="Enter target (e.g. google.com, oxford.ac.uk, admin@domain.com)...")
 
 with c_in2:
-    url_filter = st.text_input("URL / Path Filter", placeholder="e.g. login, resetpassword, moodle, portal")
+    url_filter = st.text_input("URL / Path Filter", placeholder="e.g. login, portal, cpanel")
 
 c_opt1, c_opt2 = st.columns([1, 4])
 with c_opt1:
@@ -87,18 +87,32 @@ with c_opt2:
 
 st.markdown("---")
 
-# 6. Comprehensive Intelligence Generator (Worldwide Dynamic)
+# 6. Target Validity Check
+def is_valid_target(target):
+    target = target.strip()
+    if not target or len(target) < 4:
+        return False
+    # Check if user just entered dots or symbols
+    if re.fullmatch(r"[\.\-_/]+", target):
+        return False
+    # Must have a valid dot for domain or @ for email
+    if "." not in target and "@" not in target:
+        return False
+    return True
+
+# 7. Intelligence Generator
 def generate_threat_data(target_input):
     target = target_input.strip().lower().replace("https://", "").replace("http://", "").split("/")[0]
-    if not target:
-        return "", [], 0, 0
+    
+    if not is_valid_target(target):
+        return target, [], 0, 0
 
     if "@" in target:
         domain = target.split("@")[-1]
     else:
         domain = target
 
-    # Deterministic seed for consistency per target
+    # Consistent seed
     seed = int(hashlib.md5(domain.encode()).hexdigest()[:8], 16)
     np.random.seed(seed)
 
@@ -128,20 +142,31 @@ def generate_threat_data(target_input):
         r["key"] = f"{domain}_{idx+1}"
         r["added"] = "2026-08-16"
 
-    emp_metric = int(np.random.randint(2000, 4000))
-    cust_metric = int(np.random.randint(30000, 75000))
+    emp_metric = sum(1 for r in records if r["category"] == "Employees") * int(np.random.randint(400, 800))
+    cust_metric = sum(1 for r in records if r["category"] == "Customers") * int(np.random.randint(5000, 15000))
 
     return domain, records, emp_metric, cust_metric
 
-# 7. Render Screen Logic
+# 8. Render Logic
 if query:
     target_domain, all_records, emp_total, cust_total = generate_threat_data(query)
 
+    # Filter records
     filtered = [
         r for r in all_records
         if (not url_filter or url_filter.strip().lower() in r["url"].lower() or url_filter.strip().lower() in r["user"].lower())
         and (pwd_range[0] <= r["len"] <= pwd_range[1])
     ]
+
+    # اگر کوئی ریکارڈ نہیں ملتا یا غلط ڈومین ہے تو میٹرکس 0 ہو جائیں گے
+    if len(filtered) == 0:
+        emp_display = 0
+        cust_display = 0
+        timeline_values = [0] * 12
+    else:
+        emp_display = emp_total
+        cust_display = cust_total
+        timeline_values = [15, 22, 30, 28, 45, 55, 60, 48, 72, 85, 90, 110]
 
     # Metrics Row
     col_m1, col_m2, col_m3 = st.columns([1.2, 1.2, 1])
@@ -149,8 +174,8 @@ if query:
         st.markdown(f"""
         <div class="metric-card">
             <div class="metric-title">👥 EMPLOYEES</div>
-            <div class="metric-number">{emp_total:,}</div>
-            <div class="metric-subtext">97% strong · 3% weak</div>
+            <div class="metric-number">{emp_display:,}</div>
+            <div class="metric-subtext">{"97% strong · 3% weak" if emp_display > 0 else "0% compromise"}</div>
         </div>
         """, unsafe_allow_html=True)
 
@@ -158,14 +183,14 @@ if query:
         st.markdown(f"""
         <div class="metric-card">
             <div class="metric-title">👤 CUSTOMERS</div>
-            <div class="metric-number">{cust_total:,}</div>
-            <div class="metric-subtext">78% strong · 22% weak</div>
+            <div class="metric-number">{cust_display:,}</div>
+            <div class="metric-subtext">{"78% strong · 22% weak" if cust_display > 0 else "0% compromise"}</div>
         </div>
         """, unsafe_allow_html=True)
 
     with col_m3:
         st.markdown("""<div class="metric-card"><div class="metric-title">📈 BREACH TIMELINE</div>""", unsafe_allow_html=True)
-        timeline_data = pd.DataFrame({"Incidents": [15, 22, 30, 28, 45, 55, 60, 48, 72, 85, 90, 110]})
+        timeline_data = pd.DataFrame({"Incidents": timeline_values})
         st.line_chart(timeline_data, height=75)
         st.markdown("</div>", unsafe_allow_html=True)
 
@@ -184,7 +209,7 @@ if query:
             dataset = [r for r in filtered if r["category"].lower() == cat_filter.lower()]
 
         if not dataset:
-            st.info("No matching records found for this category.")
+            st.info("No matching records found for this target/category.")
             return
 
         cols = st.columns([3.5, 2.5, 4, 2, 1.5, 1.5])
@@ -233,4 +258,4 @@ if query:
         render_tab_table("third_parties")
 
 else:
-    st.info("👆 Enter any worldwide domain (e.g. `google.com`, `shopify.com`, `apple.com`) or email to run the intelligence check.")
+    st.info("👆 Enter any valid worldwide domain (e.g. `google.com`, `shopify.com`, `apple.com`) or email to inspect.")
